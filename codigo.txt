@@ -1,0 +1,282 @@
+#include <Ticker.h>
+#include <LiquidCrystal_I2C.h>
+#include "WiFi.h"
+#include <HTTPClient.h>
+#include <UrlEncode.h>
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+Ticker timer; 
+Ticker sistema;  
+bool flag1 = false;
+int tempo = 2000;
+int luz_bomba = 17; 
+int m_espera = 5;
+int i_noturna = 16;
+int bomba = 18;
+int bombateste = 14;
+int solo = 4;
+int soloUmidade;
+int lum = 2;
+int lumvalor;
+void luz();
+void armazenamento();
+
+
+const char* ssid = "AP105";
+const char* password = "105@5015";
+
+#define Sensor 36
+bool flag2 = 1;
+
+
+String phoneNumber = "+5577991188876";
+String apiKey = "8817719";
+
+void sendMessage(String message) {
+
+  
+  String url = "https://api.callmebot.com/whatsapp.php?phone=" + phoneNumber + "&apikey=" + apiKey + "&text=" + urlEncode(message);
+  HTTPClient http;
+  http.begin(url);
+
+  
+  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+
+
+  int httpResponseCode = http.POST(url);
+  if (httpResponseCode == 200) {
+    Serial.print("Mensagem enviada com sucesso");
+  } else {
+    Serial.println("Erro no envio da mensagem");
+    Serial.print("HTTP response code: ");
+    Serial.println(httpResponseCode);
+  }
+
+  
+  http.end();
+}
+
+void testar_componentes() {  
+    lumvalor = analogRead(lum);  
+    lumvalor = map(lumvalor, 1001, 32, 0, 100);  
+
+    Serial.print("Leitura do LDR: ");
+    Serial.println(lumvalor);
+
+    if (lumvalor < 1) {  
+        Serial.println("⚠️ LDR desconectado.");
+    }    
+    else if (lumvalor >= 100) {  
+        Serial.println("⚠️ LDR pode estar queimado (aberto).");
+    }
+    else {
+        Serial.println("✅ LDR funcionando normalmente.");
+    }
+    soloUmidade = analogRead(solo);  
+    soloUmidade = map(soloUmidade, 4095, 0, 0, 100);  
+
+    Serial.print("Leitura do sensor de umidade: ");
+    Serial.println(soloUmidade);
+
+    if (soloUmidade < 1) {  
+        Serial.println("⚠️Sensor de umidade desconectado ou com falha.");
+    }
+    else if (soloUmidade >= 100) {  
+        Serial.println("⚠️Sensor de umidade pode estar queimado (aberto). Verifique a conexão.");
+    }
+    else {
+        Serial.println("✅Sensor de umidade funcionando normalmente.");
+    }
+}
+void setar_flag() {
+    flag1 = true;  // Apenas sinaliza que o LDR deve ser lido
+}
+void setup()
+{
+   WiFi.begin(ssid, password);
+  Serial.println("Conectando");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConectado ao WiFi neste IP: " + WiFi.localIP().toString());
+  sistema.attach(10, armazenamento);
+  lcd.begin(16,2);
+  Serial.begin(9600);
+  
+  pinMode(luz_bomba, OUTPUT);
+  pinMode(m_espera, OUTPUT);
+  pinMode(i_noturna, OUTPUT);
+  pinMode(bomba, OUTPUT);
+  
+  pinMode(solo,INPUT);
+  pinMode(lum, INPUT);
+  sistema.attach(2, setar_flag);
+  timer.attach(10, testar_componentes);
+  lcd.init();
+    
+  lcd.backlight();
+  lcd.leftToRight();
+  lcd.setCursor(3,0);
+  lcd.print("MONITOR DE");
+  lcd.setCursor(1,1);
+  lcd.print("UMIDADE E LUZ");
+  delay(tempo);
+   
+}
+
+void registros ()
+{
+  lcd.setCursor(0,0);
+  lcd.print("LUZ: ");
+  lcd.setCursor(4,0);
+  lcd.print(lumvalor);
+  lcd.setCursor(7,0);
+  lcd.print("%");
+  
+  lcd.setCursor(0,1);
+  lcd.print("UMIDADE: ");
+  lcd.setCursor(8,1);
+  lcd.print(soloUmidade);
+  lcd.setCursor(11,1);
+  lcd.print("%");
+  
+  delay(3000);
+  lcd.clear();
+  
+}
+
+void loop()
+{
+  // Sensor de umidade
+  soloUmidade = analogRead(solo); 
+  soloUmidade = map(soloUmidade, 0,1023 ,0,100);
+
+//sensor de luminosidade
+  lumvalor = analogRead(lum);
+  lumvalor = map (lumvalor, 1001, 32, 0,100);
+
+  if (lumvalor < 0)
+  {
+    lumvalor = 0;
+
+  }
+  
+  //***********************************************//
+  
+  lcd.clear();
+  
+  if (flag1) {  // Se a flag foi ativada pelo timer    
+        
+        Serial.print("Leitura do LDR: ");
+        Serial.println(lumvalor);
+        Serial.print("Leitura do Solo: ");
+        Serial.println(soloUmidade);
+
+        if (soloUmidade < 50 && lumvalor <= 45) {
+            digitalWrite(m_espera, LOW);
+            digitalWrite(luz_bomba, HIGH);
+            digitalWrite(i_noturna, LOW);
+            digitalWrite(bomba, HIGH);
+            int leitura = analogRead(bombateste);
+
+            Serial.print("Tensão ");
+            Serial.println(leitura);
+
+            if (leitura < 500 || leitura > 5000) {  
+                Serial.println("⚠️ ALERTA: Bomba queimado ou desconectado!");
+            } else {
+                Serial.println("✅ Bomba funcionando normalmente.");
+            }
+            lcd.setCursor(4,0);
+            lcd.print("SOLO SECO");
+            lcd.setCursor(2,1);
+            lcd.print("--IRRIGANDO--");
+            delay(tempo);
+            lcd.clear();
+            registros();
+        }
+        else if (soloUmidade >= 50 && lumvalor < 45) {
+            digitalWrite(m_espera, HIGH);
+            digitalWrite(luz_bomba, LOW);
+            digitalWrite(i_noturna, LOW);
+            digitalWrite(bomba, LOW);
+            
+            lcd.setCursor(3,0);
+            lcd.print("IRRIGACAO");
+            lcd.setCursor(1,1);
+            lcd.print("--COMPLETA--");
+            delay(tempo);
+            lcd.clear();
+            registros();
+        }
+        else if (soloUmidade < 50 && lumvalor > 45) {
+            digitalWrite(m_espera, LOW);
+            digitalWrite(luz_bomba, LOW);
+            digitalWrite(i_noturna, HIGH);
+            digitalWrite(bomba, LOW);
+            
+            lcd.setCursor(3,0);
+            lcd.print("LUZ ALTA ");
+            delay(tempo);
+            lcd.clear();
+            registros();
+        }
+        else if (soloUmidade >= 50 && lumvalor > 45) {
+            digitalWrite(m_espera, HIGH);
+            digitalWrite(luz_bomba, LOW);
+            digitalWrite(i_noturna, LOW);
+            digitalWrite(bomba, LOW);
+            
+            lcd.setCursor(3,0);
+            lcd.print("SOLO UMIDO");
+            lcd.setCursor(4,1);
+            lcd.print("LUZ ALTA");
+            delay(tempo);
+            lcd.clear();
+            registros();
+        }
+        flag1 = false;
+    }
+}
+  void luz(){
+    if (soloUmidade < 50 && lumvalor <=45  )
+  {
+	 digitalWrite(m_espera, LOW);
+    digitalWrite(luz_bomba, HIGH);
+    digitalWrite(i_noturna, LOW);
+  }
+  else if (soloUmidade >= 50 && lumvalor <45)
+  {
+    digitalWrite(m_espera, HIGH);
+    digitalWrite(luz_bomba, LOW);
+    digitalWrite(i_noturna, LOW);
+ }
+ else if ( soloUmidade < 50 && lumvalor  > 45)
+  {
+    digitalWrite(m_espera, LOW);
+    digitalWrite(luz_bomba, LOW);
+    digitalWrite(i_noturna, HIGH);
+  }
+    else if (soloUmidade >=50 && lumvalor > 45)
+  {
+    digitalWrite(m_espera, HIGH);
+    digitalWrite(luz_bomba, LOW);
+    digitalWrite(i_noturna, LOW);
+  }
+}
+void armazenamento(){
+  int U[10];
+  int L[10];
+  String mensagem = "Relatório de umidade e luz:\n";
+  for (int i=0; i<10; i++){
+  soloUmidade = analogRead(solo); 
+  soloUmidade = map(soloUmidade, 0,1023 ,0,100);
+  lumvalor = analogRead(lum);
+  lumvalor = map (lumvalor, 1001, 32, 0,100);
+    U[i] = soloUmidade;
+    L[i] = lumvalor;
+    mensagem += "Leitura " + String(i + 1) + ": Umidade: " + String(soloUmidade) + "%, Luz: " + String(lumvalor) + "%\n";
+    delay(1000);
+  }
+  sendMessage(mensagem);
+}
